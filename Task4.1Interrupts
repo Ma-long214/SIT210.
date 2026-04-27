@@ -1,1 +1,127 @@
+#include <Wire.h>
+#include <BH1750.h>
 
+// --- Pin Definitions ---
+const int pirPin = 2;
+const int switchPin = 3;
+const int led1Pin = 5;
+const int led2Pin = 6;
+
+// --- Sensor Objects ---
+BH1750 lightMeter;
+
+// --- Constants ---
+const float DARKNESS_THRESHOLD = 50.0; // Lux threshold for "dark" conditions
+
+// --- Volatile variables for ISR (Interrupt Service Routine) ---
+volatile bool pirEventTriggered = false;
+volatile bool switchEventTriggered = false;
+
+// --- State Variables ---
+bool lightState = false; 
+bool isManualOverride = false; // Tracks if the slider switch is forcing the lights ON
+unsigned long lastSwitchTime = 0; 
+const unsigned long DEBOUNCE_DELAY = 200; 
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial); 
+
+  // Initialize I2C and BH1750
+  Wire.begin();
+  if (lightMeter.begin()) {
+    Serial.println("System Ready: BH1750 Initialized.");
+  }
+  else {
+    Serial.println("Error: BH1750 not found.");
+  }
+
+  pinMode(led1Pin, OUTPUT);
+  pinMode(led2Pin, OUTPUT);
+  
+  pinMode(pirPin, INPUT_PULLDOWN); 
+  pinMode(switchPin, INPUT_PULLUP);
+
+  updateLEDs(LOW);
+
+  // --- Attach Hardware Interrupts ---
+  attachInterrupt(digitalPinToInterrupt(pirPin), pirISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(switchPin), switchISR, CHANGE);
+  
+  Serial.println("Interrupts Attached. System Live.");
+}
+
+void loop() {
+  // -------------------------------------------------------------
+  // 1. Handle Slider Switch (Manual Override / Backup Option)
+  // -------------------------------------------------------------
+  if (switchEventTriggered) {
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastSwitchTime > DEBOUNCE_DELAY) {
+      // Check physical state to determine if switch is ON or OFF
+      int currentSwitchState = digitalRead(switchPin);
+      
+      if (currentSwitchState == LOW) { // Switch is ON (connected to GND) 
+        isManualOverride = true;
+        lightState = true; 
+        updateLEDs(HIGH);
+        Serial.println("Manual Override: ON. Motion detection ignored.");
+      }
+      else { // Switch is OFF 
+        isManualOverride = false;
+        lightState = false;
+        updateLEDs(LOW);
+        Serial.println("Manual Override: OFF. Automatic mode restored.");
+      }
+      
+      lastSwitchTime = currentTime;
+    }
+    switchEventTriggered = false; 
+  }
+
+  // -------------------------------------------------------------
+  // 2. Handle PIR Motion (Automatic Mode)
+  // -------------------------------------------------------------
+  if (pirEventTriggered) {
+    // Only process motion if the manual switch is NOT active 
+    if (isManualOverride) {
+      Serial.println("Motion detected, but ignored (Manual Override Active).");
+    }
+    else {
+      float lux = lightMeter.readLightLevel();
+      
+      // Automatic trigger only when it is dark 
+      if (lux < DARKNESS_THRESHOLD) {
+        lightState = !lightState; // Toggle lights based on presence 
+        updateLEDs(lightState ? HIGH : LOW);
+        
+        Serial.print("Motion Detected in DARK (");
+        Serial.print(lux);
+        Serial.print(" lx). Lights toggled ");
+        Serial.println(lightState ? "ON" : "OFF");
+      }
+      else {
+        Serial.print("Motion detected, but it's too bright (");
+        Serial.print(lux);
+        Serial.println(" lx).");
+      }
+    }
+    pirEventTriggered = false;
+  }
+}
+
+// Helper to set both LED states
+void updateLEDs(int state) {
+  digitalWrite(led1Pin, state);
+  digitalWrite(led2Pin, state);
+}
+
+// ISRs should be minimal and only update flags
+void pirISR() {
+  pirEventTriggered = true; 
+}
+
+void switchISR() {
+  switchEventTriggered = true; 
+}

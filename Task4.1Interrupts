@@ -102,7 +102,7 @@ void loop() {
           
           Serial.print("Motion Detected in DARK (");
           Serial.print(lux);
-          Serial.print(" lx). Lights turned ON");
+          Serial.println(" lx). Lights turned ON");
         }
         else {
           Serial.print("Motion detected, but it's too bright (");

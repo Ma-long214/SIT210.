@@ -45,7 +45,7 @@ void setup() {
   updateLEDs(LOW);
 
   // --- Attach Hardware Interrupts ---
-  attachInterrupt(digitalPinToInterrupt(pirPin), pirISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(pirPin), pirISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(switchPin), switchISR, CHANGE);
   
   Serial.println("Interrupts Attached. System Live.");
@@ -89,22 +89,31 @@ void loop() {
       Serial.println("Motion detected, but ignored (Manual Override Active).");
     }
     else {
-      float lux = lightMeter.readLightLevel();
-      
-      // Automatic trigger only when it is dark 
-      if (lux < DARKNESS_THRESHOLD) {
-        lightState = !lightState; // Toggle lights based on presence 
-        updateLEDs(lightState ? HIGH : LOW);
+      // Check whether the PIR sensor is currently HIGH (movement detected) or LOW (no movement detected).
+      int currentPirState = digitalRead(pirPin);
+
+      if (currentPirState == HIGH) {
+        float lux = lightMeter.readLightLevel();
         
-        Serial.print("Motion Detected in DARK (");
-        Serial.print(lux);
-        Serial.print(" lx). Lights toggled ");
-        Serial.println(lightState ? "ON" : "OFF");
+        // Automatic trigger only when it is dark 
+        if (lux < DARKNESS_THRESHOLD) {
+          lightState = true; 
+          updateLEDs(HIGH);
+          
+          Serial.print("Motion Detected in DARK (");
+          Serial.print(lux);
+          Serial.print(" lx). Lights turned ON");
+        }
+        else {
+          Serial.print("Motion detected, but it's too bright (");
+          Serial.print(lux);
+          Serial.println(" lx).");
+        }
       }
       else {
-        Serial.print("Motion detected, but it's too bright (");
-        Serial.print(lux);
-        Serial.println(" lx).");
+        lightState = false;
+        updateLEDs(LOW);
+        Serial.println("Motion ended. Lights turned OFF.");
       }
     }
     pirEventTriggered = false;

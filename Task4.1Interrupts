@@ -113,7 +113,7 @@ void loop() {
       else {
         lightState = false;
         updateLEDs(LOW);
-        Serial.println("Motion ended. Lights turned OFF.");
+        Serial.println("Lights turned OFF.");
       }
     }
     pirEventTriggered = false;
